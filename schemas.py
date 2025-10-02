@@ -1,35 +1,35 @@
 from pydantic import BaseModel
+from typing import List, Optional
 from datetime import datetime
-from typing import Optional, List
+
+# --- Sensor Schemas ---
 
 
-class SensorBase(BaseModel):
+class SensorCreate(BaseModel):
     name: str
     type: str
     location: Optional[str] = None
 
 
-class SensorCreate(SensorBase):
-    pass
-
-
-class SensorResponse(SensorBase):
+class SensorResponse(SensorCreate):
     id: int
 
     class Config:
         orm_mode = True
 
 
-class SensorReadingBase(BaseModel):
+class SensorWithReadings(SensorResponse):
+    readings: List["SensorReadingResponse"] = []
+
+
+# --- Reading Schemas ---
+class SensorReadingCreate(BaseModel):
+    sensor_id: int
     value: float
     unit: str
 
 
-class SensorReadingCreate(SensorReadingBase):
-    sensor_id: int
-
-
-class SensorReadingResponse(SensorReadingBase):
+class SensorReadingResponse(SensorReadingCreate):
     id: int
     timestamp: datetime
 
@@ -37,5 +37,5 @@ class SensorReadingResponse(SensorReadingBase):
         orm_mode = True
 
 
-class SensorWithReadings(SensorResponse):
-    readings: List[SensorReadingResponse] = []
+# Forward reference fix
+SensorWithReadings.update_forward_refs()

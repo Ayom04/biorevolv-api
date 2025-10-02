@@ -1,6 +1,5 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, func
 from sqlalchemy.orm import relationship
-from datetime import datetime
 from database import Base
 
 
@@ -9,8 +8,8 @@ class Sensor(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
-    type = Column(String, nullable=False)  # e.g., temperature, humidity
-    location = Column(String, nullable=True)
+    type = Column(String, nullable=False)
+    location = Column(String)
 
     readings = relationship("SensorReading", back_populates="sensor")
 
@@ -22,6 +21,6 @@ class SensorReading(Base):
     sensor_id = Column(Integer, ForeignKey("sensors.id"))
     value = Column(Float, nullable=False)
     unit = Column(String, nullable=False)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
 
     sensor = relationship("Sensor", back_populates="readings")

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from database import SessionLocal, engine, Base
 import models
 import schemas
+from ai_service import generate_sensor_insight
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -19,8 +20,10 @@ def get_db():
     finally:
         db.close()
 
-# ---- Sensor Endpoints ----
 
+# -----------------------------
+# Sensor Endpoints
+# -----------------------------
 
 @app.post("/api/sensors/", response_model=schemas.SensorResponse)
 def create_sensor(sensor: schemas.SensorCreate, db: Session = Depends(get_db)):
@@ -39,8 +42,10 @@ def get_sensor(sensor_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Sensor not found")
     return sensor
 
-# ---- Sensor Reading Endpoints ----
 
+# -----------------------------
+# Sensor Reading Endpoints
+# -----------------------------
 
 @app.post("/api/sensors/data", response_model=schemas.SensorReadingResponse)
 def ingest_data(reading: schemas.SensorReadingCreate, db: Session = Depends(get_db)):
@@ -59,5 +64,39 @@ def ingest_data(reading: schemas.SensorReadingCreate, db: Session = Depends(get_
 @app.get("/api/sensors/{sensor_id}/readings", response_model=list[schemas.SensorReadingResponse])
 def get_readings(sensor_id: int, db: Session = Depends(get_db)):
     readings = db.query(models.SensorReading).filter(
-        models.SensorReading.sensor_id == sensor_id).all()
+        models.SensorReading.sensor_id == sensor_id
+    ).all()
     return readings
+
+
+# -----------------------------
+# Insights Endpoint (AI integration placeholder)
+# -----------------------------
+
+@app.get("/api/sensors/{sensor_id}/insights")
+def get_insights(sensor_id: int, db: Session = Depends(get_db)):
+    readings = db.query(models.SensorReading).filter(
+        models.SensorReading.sensor_id == sensor_id
+    ).all()
+
+    if not readings:
+        raise HTTPException(
+            status_code=404, detail="No readings found for this sensor")
+
+# Prepare readings in dict format for AI
+    readings_data = [
+        {
+            "value": r.value,
+            "unit": r.unit,
+            "timestamp": str(r.timestamp)
+        }
+        for r in readings
+    ]
+
+    # Call AI service
+    insight = generate_sensor_insight(sensor_id, readings_data)
+
+    return {
+        "sensor_id": sensor_id,
+        "insight": insight
+    }
