@@ -1,6 +1,6 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, func
-from sqlalchemy.orm import relationship
 from database import Base
+from sqlalchemy.orm import relationship
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, func, Boolean
 
 
 class Sensor(Base):
@@ -21,6 +21,6 @@ class SensorReading(Base):
     sensor_id = Column(Integer, ForeignKey("sensors.id"))
     value = Column(Float, nullable=False)
     unit = Column(String, nullable=False)
+    is_present = Column(Boolean, default=True)
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
-
     sensor = relationship("Sensor", back_populates="readings")

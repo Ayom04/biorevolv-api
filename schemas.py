@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
 
@@ -19,7 +19,11 @@ class SensorResponse(SensorCreate):
 
 
 class SensorWithReadings(SensorResponse):
-    readings: List["SensorReadingResponse"] = []
+    # avoid mutable default; ensure nested response is parsed from ORM
+    readings: List["SensorReadingResponse"] = Field(default_factory=list)
+
+    class Config:
+        orm_mode = True
 
 
 # --- Reading Schemas ---
@@ -27,6 +31,7 @@ class SensorReadingCreate(BaseModel):
     sensor_id: int
     value: float
     unit: str
+    is_present: Optional[bool] = True
 
 
 class SensorReadingResponse(SensorReadingCreate):

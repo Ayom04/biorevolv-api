@@ -1,14 +1,22 @@
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
+from fastapi.middleware.cors import CORSMiddleware
 from database import SessionLocal, engine, Base
 import models
 import schemas
-from ai_service import generate_sensor_insight
+# from ai_service import generate_sensor_insight
 
 # Create tables
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Sensor API")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Dependency: DB session
 
@@ -21,9 +29,13 @@ def get_db():
         db.close()
 
 
+@app.get("/api")
+def read_root():
+    return {"message": "Welcome to the Sensor API"}
 # -----------------------------
 # Sensor Endpoints
 # -----------------------------
+
 
 @app.post("/api/sensors/", response_model=schemas.SensorResponse)
 def create_sensor(sensor: schemas.SensorCreate, db: Session = Depends(get_db)):
@@ -34,8 +46,15 @@ def create_sensor(sensor: schemas.SensorCreate, db: Session = Depends(get_db)):
     return db_sensor
 
 
+@app.get("/api/sensors/", response_model=list[schemas.SensorWithReadings])
+def get_sensors(db: Session = Depends(get_db)):
+    sensors = db.query(models.Sensor).all()
+    return sensors
+
+
 @app.get("/api/sensors/{sensor_id}", response_model=schemas.SensorWithReadings)
 def get_sensor(sensor_id: int, db: Session = Depends(get_db)):
+    print(sensor_id)
     sensor = db.query(models.Sensor).filter(
         models.Sensor.id == sensor_id).first()
     if not sensor:
@@ -73,30 +92,30 @@ def get_readings(sensor_id: int, db: Session = Depends(get_db)):
 # Insights Endpoint (AI integration placeholder)
 # -----------------------------
 
-@app.get("/api/sensors/{sensor_id}/insights")
-def get_insights(sensor_id: int, db: Session = Depends(get_db)):
-    readings = db.query(models.SensorReading).filter(
-        models.SensorReading.sensor_id == sensor_id
-    ).all()
+# @app.get("/api/sensors/{sensor_id}/insights")
+# def get_insights(sensor_id: int, db: Session = Depends(get_db)):
+#     readings = db.query(models.SensorReading).filter(
+#         models.SensorReading.sensor_id == sensor_id
+#     ).all()
 
-    if not readings:
-        raise HTTPException(
-            status_code=404, detail="No readings found for this sensor")
+#     if not readings:
+#         raise HTTPException(
+#             status_code=404, detail="No readings found for this sensor")
 
-# Prepare readings in dict format for AI
-    readings_data = [
-        {
-            "value": r.value,
-            "unit": r.unit,
-            "timestamp": str(r.timestamp)
-        }
-        for r in readings
-    ]
+# # Prepare readings in dict format for AI
+#     readings_data = [
+#         {
+#             "value": r.value,
+#             "unit": r.unit,
+#             "timestamp": str(r.timestamp)
+#         }
+#         for r in readings
+#     ]
 
-    # Call AI service
-    insight = generate_sensor_insight(sensor_id, readings_data)
+#     # Call AI service
+#     insight = generate_sensor_insight(sensor_id, readings_data)
 
-    return {
-        "sensor_id": sensor_id,
-        "insight": insight
-    }
+#     return {
+#         "sensor_id": sensor_id,
+#         "insight": insight
+#     }
