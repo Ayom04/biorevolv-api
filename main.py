@@ -62,6 +62,17 @@ def get_sensor(sensor_id: int, db: Session = Depends(get_db)):
     return sensor
 
 
+@app.delete("/api/sensors/{sensor_id}", response_model=schemas.SensorResponse)
+def delete_sensor(sensor_id: int, db: Session = Depends(get_db)):
+    sensor = db.query(models.Sensor).filter(
+        models.Sensor.id == sensor_id).first()
+    if not sensor:
+        raise HTTPException(status_code=404, detail="Sensor not found")
+    db.delete(sensor)
+    db.commit()
+    return sensor
+
+
 # -----------------------------
 # Sensor Reading Endpoints
 # -----------------------------
