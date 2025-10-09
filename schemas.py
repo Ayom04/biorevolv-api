@@ -44,3 +44,20 @@ class SensorReadingResponse(SensorReadingCreate):
 
 # Forward reference fix
 SensorWithReadings.update_forward_refs()
+
+
+class BiogasDataCreate(BaseModel):
+    day: float
+    VS_remaining_kg: float
+    VS_degraded_kg: float
+    cum_CH4_m3: float
+    approx_biogas_m3: float
+    VFA_g: float
+    NaHCO3_g_safety: float
+
+
+class BiogasDataResponse(BiogasDataCreate):
+    id: int
+
+    class Config:
+        orm_mode = True

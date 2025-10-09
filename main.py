@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
 from database import SessionLocal, engine, Base
@@ -98,6 +98,18 @@ def get_readings(sensor_id: int, db: Session = Depends(get_db)):
     ).all()
     return readings
 
+
+@app.get("/api/biogas-data", response_model=list[schemas.BiogasDataResponse])
+def get_biogas_data(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1),
+    db: Session = Depends(get_db)
+):
+    """
+    Fetch BiogasData with optional pagination.
+    """
+    data = db.query(models.BiogasData).offset(skip).limit(limit).all()
+    return data
 
 # -----------------------------
 # Insights Endpoint (AI integration placeholder)
