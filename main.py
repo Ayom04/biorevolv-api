@@ -1,9 +1,11 @@
-from fastapi import FastAPI, Depends, HTTPException, Query
+import json
+from fastapi import FastAPI, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
 from database import SessionLocal, engine, Base
 import models
 import schemas
+from fastapi.middleware.cors import CORSMiddleware
 # from ai_service import generate_sensor_insight
 
 # Create tables
@@ -28,10 +30,62 @@ def get_db():
     finally:
         db.close()
 
+# -------------------------------
+# 🔹 WebSocket Connection Manager
+# -------------------------------
+
+
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: list[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+        print("🔌 Client connected")
+
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+            print("❌ Client disconnected")
+
+    async def broadcast(self, message: dict):
+        data = json.dumps(message, default=str)
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(data)
+            except Exception:
+                self.disconnect(connection)
+
+
+manager = ConnectionManager()
+
 
 @app.get("/api")
 def read_root():
     return {"message": "Welcome to the Sensor API"}
+
+
+# ======================================================
+# 🔹 WebSocket manager to track connected clients
+# ======================================================
+connected_clients: list[WebSocket] = []
+
+
+@app.websocket("/ws/sensors")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    connected_clients.append(websocket)
+    print("✅ Client connected")
+
+    try:
+        while True:
+            # Keep connection alive (clients may send pings)
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        connected_clients.remove(websocket)
+        print("❌ Client disconnected")
+
 # -----------------------------
 # Sensor Endpoints
 # -----------------------------
@@ -93,9 +147,13 @@ def ingest_data(reading: schemas.SensorReadingCreate, db: Session = Depends(get_
 
 @app.get("/api/sensors/{sensor_id}/readings", response_model=list[schemas.SensorReadingResponse])
 def get_readings(sensor_id: int, db: Session = Depends(get_db)):
-    readings = db.query(models.SensorReading).filter(
-        models.SensorReading.sensor_id == sensor_id
-    ).all()
+    readings = (
+        db.query(models.SensorReading)
+        .filter(models.SensorReading.sensor_id == sensor_id)
+        .order_by(models.SensorReading.timestamp.desc())
+        .limit(50)
+        .all()
+    )
     return readings
 
 
@@ -110,6 +168,21 @@ def get_biogas_data(
     """
     data = db.query(models.BiogasData).offset(skip).limit(limit).all()
     return data
+
+# -----------------------------------
+# 🔹 WebSocket — realtime connection
+# -----------------------------------
+
+
+@app.websocket("/ws/sensors")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            # keep alive — client doesn’t need to send anything
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
 
 # -----------------------------
 # Insights Endpoint (AI integration placeholder)
