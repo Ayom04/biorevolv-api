@@ -110,6 +110,19 @@ def delete_sensor(sensor_id: int, db: Session = Depends(get_db)):
     db.commit()
     return sensor
 
+
+@app.delete("/api/sensors/{sensor_id}/readings", response_model=dict)
+def delete_sensor_readings(sensor_id: int, db: Session = Depends(get_db)):
+    sensor = db.query(models.Sensor).filter(
+        models.Sensor.id == sensor_id).first()
+    if not sensor:
+        raise HTTPException(status_code=404, detail="Sensor not found")
+
+    deleted_count = db.query(models.SensorReading).filter(
+        models.SensorReading.sensor_id == sensor_id).delete()
+    db.commit()
+    return {"deleted_readings": deleted_count}
+
 # -----------------------------
 # 🔹 Sensor Readings
 # -----------------------------
