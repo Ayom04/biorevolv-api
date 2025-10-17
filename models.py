@@ -21,7 +21,7 @@ class SensorReading(Base):
     sensor_id = Column(Integer, ForeignKey("sensors.id"))
     value = Column(Float, nullable=False)
     unit = Column(String, nullable=False)
-    is_present = Column(Boolean, default=True)
+    is_present = Column(Boolean, default=False)
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
     sensor = relationship("Sensor", back_populates="readings")
 
