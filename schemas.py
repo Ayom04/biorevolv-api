@@ -29,8 +29,8 @@ class SensorWithReadings(SensorResponse):
 # --- Reading Schemas ---
 class SensorReadingCreate(BaseModel):
     sensor_id: int
-    value: float
-    unit: str
+    value: Optional[float] = None
+    unit: Optional[str] = None
     is_present: Optional[bool] = True
 
 

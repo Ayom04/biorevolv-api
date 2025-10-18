@@ -129,23 +129,37 @@ def delete_sensor_readings(sensor_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/api/sensors/data", response_model=schemas.SensorReadingResponse)
-async def ingest_data(reading: schemas.SensorReadingCreate, db: Session = Depends(get_db)):
+async def ingest_data(
+    reading: schemas.SensorReadingCreate,
+    db: Session = Depends(get_db)
+):
     """Receive sensor reading and broadcast to all WebSocket clients."""
     sensor = db.query(models.Sensor).filter(
         models.Sensor.id == reading.sensor_id).first()
     if not sensor:
         raise HTTPException(status_code=404, detail="Sensor not found")
 
-    db_reading = models.SensorReading(**reading.dict())
+    # ✅ Set safe defaults for missing fields
+    data = reading.dict()
+
+    if data.get("value") is None:
+        data["value"] = 0.0   # default or previous reading
+    if not data.get("unit"):
+        data["unit"] = sensor.unit if hasattr(sensor, "unit") else "N/A"
+    if data.get("is_present") is None:
+        data["is_present"] = True
+
+    db_reading = models.SensorReading(**data)
     db.add(db_reading)
     db.commit()
     db.refresh(db_reading)
 
-    # 🔹 Broadcast new reading to all WebSocket clients
+    # 🔹 Broadcast to all WebSocket clients
     await manager.broadcast({
         "type": "new_reading",
         "sensor_id": db_reading.sensor_id,
         "value": db_reading.value,
+        "is_present": db_reading.is_present,
         "timestamp": str(db_reading.timestamp),
     })
 
