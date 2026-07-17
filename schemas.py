@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import List, Optional
 from datetime import datetime
 
@@ -14,16 +14,14 @@ class SensorCreate(BaseModel):
 class SensorResponse(SensorCreate):
     id: int
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SensorWithReadings(SensorResponse):
     # avoid mutable default; ensure nested response is parsed from ORM
     readings: List["SensorReadingResponse"] = Field(default_factory=list)
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # --- Reading Schemas ---
@@ -38,8 +36,7 @@ class SensorReadingResponse(SensorReadingCreate):
     id: int
     timestamp: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Forward reference fix
@@ -59,5 +56,4 @@ class BiogasDataCreate(BaseModel):
 class BiogasDataResponse(BiogasDataCreate):
     id: int
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)

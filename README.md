@@ -75,7 +75,7 @@ The system provides:
 ## 🏗️ Architecture
 
 - **Backend**: FastAPI (Python)
-- **Database**: SQLite (development) / PostgreSQL (production)
+- **Database**: PostgreSQL
 - **ORM**: SQLAlchemy
 - **Data Validation**: Pydantic
 - **API Documentation**: Automatic OpenAPI/Swagger documentation
@@ -114,7 +114,23 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 4. Run the Application
+### 4. Configure PostgreSQL
+
+Copy the example env file and update the connection string:
+
+```bash
+cp .env.example .env
+```
+
+Example `.env`:
+
+```env
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/biorevolv
+```
+
+The app reads `.env` automatically on startup.
+
+### 5. Run the Application
 
 ```bash
 # Start the FastAPI server
@@ -201,6 +217,21 @@ GET /api/sensors/{sensor_id}/readings
 - `unit`: Unit of measurement
 - `timestamp`: Reading timestamp
 
+## 🔄 Migrate Existing SQLite Data
+
+If you already have data in `sensors.db`, copy it into PostgreSQL before switching over:
+
+```bash
+python3 scripts/migrate_sqlite_to_postgres.py \
+  --target postgresql://postgres:postgres@localhost:5432/biorevolv
+```
+
+Notes:
+
+- The target PostgreSQL database should be empty before you run the migration.
+- Sensor IDs, reading IDs, and timestamps are preserved.
+- After the migration, keep the same PostgreSQL `DATABASE_URL` in `.env` and start the API normally.
+
 ## 🔧 Development
 
 ### Project Structure
@@ -211,9 +242,12 @@ bioreolv-api/
 ├── models.py        # SQLAlchemy database models
 ├── schemas.py       # Pydantic data validation schemas
 ├── database.py      # Database connection configuration
+├── scripts/
+│   └── migrate_sqlite_to_postgres.py
 ├── requirements.txt # Python dependencies
+├── .env.example     # Sample PostgreSQL connection string
 ├── README.md        # Project documentation
-└── sensors.db       # SQLite database (auto-generated)
+└── sensors.db       # Legacy SQLite file available for migration
 ```
 
 ### Adding New Sensor Types
@@ -227,7 +261,7 @@ bioreolv-api/
 
 ### Production Considerations
 
-1. **Database**: Switch to PostgreSQL for production
+1. **Database**: Use a managed PostgreSQL instance
 2. **Environment Variables**: Use environment variables for sensitive configuration
 3. **Security**: Implement authentication and authorization
 4. **Monitoring**: Add logging and health checks
@@ -238,9 +272,7 @@ bioreolv-api/
 Create a `.env` file:
 
 ```env
-DATABASE_URL=postgresql://user:password@localhost/biogas_db
-SECRET_KEY=your-secret-key
-DEBUG=False
+DATABASE_URL=postgresql://user:password@localhost:5432/biorevolv
 ```
 
 ## 🤝 Contributing
