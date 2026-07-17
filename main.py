@@ -38,25 +38,53 @@ def get_db():
         db.close()
 
 
-def get_or_create_default_sensor(db: Session) -> models.Sensor:
-    sensor = (
-        db.query(models.Sensor)
-        .filter(models.Sensor.type == DEFAULT_SENSOR_TYPE)
-        .order_by(models.Sensor.id.asc())
-        .first()
+def ensure_single_temperature_sensor(db: Session) -> models.Sensor:
+    sensors = db.query(models.Sensor).order_by(models.Sensor.id.asc()).all()
+    canonical_sensor = next(
+        (sensor for sensor in sensors if sensor.type == DEFAULT_SENSOR_TYPE),
+        sensors[0] if sensors else None,
     )
-    if sensor:
-        return sensor
 
-    sensor = models.Sensor(
-        name=DEFAULT_SENSOR_NAME,
-        type=DEFAULT_SENSOR_TYPE,
-        location=DEFAULT_SENSOR_LOCATION,
-    )
-    db.add(sensor)
-    db.commit()
-    db.refresh(sensor)
-    return sensor
+    if canonical_sensor is None:
+        canonical_sensor = models.Sensor(
+            name=DEFAULT_SENSOR_NAME,
+            type=DEFAULT_SENSOR_TYPE,
+            location=DEFAULT_SENSOR_LOCATION,
+        )
+        db.add(canonical_sensor)
+        db.commit()
+        db.refresh(canonical_sensor)
+        return canonical_sensor
+
+    updated = False
+    if canonical_sensor.name != DEFAULT_SENSOR_NAME:
+        canonical_sensor.name = DEFAULT_SENSOR_NAME
+        updated = True
+    if canonical_sensor.type != DEFAULT_SENSOR_TYPE:
+        canonical_sensor.type = DEFAULT_SENSOR_TYPE
+        updated = True
+    if canonical_sensor.location != DEFAULT_SENSOR_LOCATION:
+        canonical_sensor.location = DEFAULT_SENSOR_LOCATION
+        updated = True
+
+    extra_sensors = [sensor for sensor in sensors if sensor.id != canonical_sensor.id]
+    if extra_sensors:
+        extra_sensor_ids = [sensor.id for sensor in extra_sensors]
+        db.query(models.SensorReading).filter(
+            models.SensorReading.sensor_id.in_(extra_sensor_ids)
+        ).update(
+            {models.SensorReading.sensor_id: canonical_sensor.id},
+            synchronize_session=False,
+        )
+        for sensor in extra_sensors:
+            db.delete(sensor)
+        updated = True
+
+    if updated:
+        db.commit()
+        db.refresh(canonical_sensor)
+
+    return canonical_sensor
 
 # -------------------------------
 # 🔹 WebSocket Connection Manager
@@ -90,7 +118,7 @@ manager = ConnectionManager()
 
 
 with SessionLocal() as startup_db:
-    get_or_create_default_sensor(startup_db)
+    ensure_single_temperature_sensor(startup_db)
 
 # -----------------------------
 # 🔹 Basic Route
@@ -108,43 +136,37 @@ def read_root():
 
 @app.post("/api/sensors/", response_model=schemas.SensorResponse)
 def create_sensor(sensor: schemas.SensorCreate, db: Session = Depends(get_db)):
-    db_sensor = models.Sensor(**sensor.model_dump())
-    db.add(db_sensor)
-    db.commit()
-    db.refresh(db_sensor)
-    return db_sensor
+    return ensure_single_temperature_sensor(db)
 
 
 @app.get("/api/sensors/", response_model=list[schemas.SensorWithReadings])
 def get_sensors(db: Session = Depends(get_db)):
-    return db.query(models.Sensor).all()
+    return [ensure_single_temperature_sensor(db)]
 
 
 @app.get("/api/sensors/{sensor_id}", response_model=schemas.SensorWithReadings)
 def get_sensor(sensor_id: int, db: Session = Depends(get_db)):
-    sensor = db.query(models.Sensor).filter(
-        models.Sensor.id == sensor_id).first()
-    if not sensor:
+    sensor = ensure_single_temperature_sensor(db)
+    if sensor.id != sensor_id:
         raise HTTPException(status_code=404, detail="Sensor not found")
     return sensor
 
 
 @app.delete("/api/sensors/{sensor_id}", response_model=schemas.SensorResponse)
 def delete_sensor(sensor_id: int, db: Session = Depends(get_db)):
-    sensor = db.query(models.Sensor).filter(
-        models.Sensor.id == sensor_id).first()
-    if not sensor:
+    sensor = ensure_single_temperature_sensor(db)
+    if sensor.id != sensor_id:
         raise HTTPException(status_code=404, detail="Sensor not found")
-    db.delete(sensor)
-    db.commit()
-    return sensor
+    raise HTTPException(
+        status_code=400,
+        detail="Temperature Sensor is the only allowed sensor and cannot be deleted",
+    )
 
 
 @app.delete("/api/sensors/{sensor_id}/readings", response_model=dict)
 def delete_sensor_readings(sensor_id: int, db: Session = Depends(get_db)):
-    sensor = db.query(models.Sensor).filter(
-        models.Sensor.id == sensor_id).first()
-    if not sensor:
+    sensor = ensure_single_temperature_sensor(db)
+    if sensor.id != sensor_id:
         raise HTTPException(status_code=404, detail="Sensor not found")
 
     deleted_count = db.query(models.SensorReading).filter(
@@ -163,7 +185,7 @@ async def ingest_data(
     db: Session = Depends(get_db)
 ):
     """Receive sensor reading and broadcast to all WebSocket clients."""
-    sensor = get_or_create_default_sensor(db)
+    sensor = ensure_single_temperature_sensor(db)
 
     # ✅ Set safe defaults for missing fields
     data = reading.model_dump()
