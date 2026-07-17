@@ -13,6 +13,10 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Sensor API")
 
+DEFAULT_SENSOR_NAME = "Temperature Sensor"
+DEFAULT_SENSOR_TYPE = "temperature"
+DEFAULT_SENSOR_LOCATION = "Digester"
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -32,6 +36,27 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def get_or_create_default_sensor(db: Session) -> models.Sensor:
+    sensor = (
+        db.query(models.Sensor)
+        .filter(models.Sensor.type == DEFAULT_SENSOR_TYPE)
+        .order_by(models.Sensor.id.asc())
+        .first()
+    )
+    if sensor:
+        return sensor
+
+    sensor = models.Sensor(
+        name=DEFAULT_SENSOR_NAME,
+        type=DEFAULT_SENSOR_TYPE,
+        location=DEFAULT_SENSOR_LOCATION,
+    )
+    db.add(sensor)
+    db.commit()
+    db.refresh(sensor)
+    return sensor
 
 # -------------------------------
 # 🔹 WebSocket Connection Manager
@@ -63,6 +88,10 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+
+with SessionLocal() as startup_db:
+    get_or_create_default_sensor(startup_db)
+
 # -----------------------------
 # 🔹 Basic Route
 # -----------------------------
@@ -79,7 +108,7 @@ def read_root():
 
 @app.post("/api/sensors/", response_model=schemas.SensorResponse)
 def create_sensor(sensor: schemas.SensorCreate, db: Session = Depends(get_db)):
-    db_sensor = models.Sensor(**sensor.dict())
+    db_sensor = models.Sensor(**sensor.model_dump())
     db.add(db_sensor)
     db.commit()
     db.refresh(db_sensor)
@@ -134,13 +163,11 @@ async def ingest_data(
     db: Session = Depends(get_db)
 ):
     """Receive sensor reading and broadcast to all WebSocket clients."""
-    sensor = db.query(models.Sensor).filter(
-        models.Sensor.id == reading.sensor_id).first()
-    if not sensor:
-        raise HTTPException(status_code=404, detail="Sensor not found")
+    sensor = get_or_create_default_sensor(db)
 
     # ✅ Set safe defaults for missing fields
-    data = reading.dict()
+    data = reading.model_dump()
+    data["sensor_id"] = sensor.id
 
     if data.get("value") is None:
         data["value"] = 0.0   # default or previous reading
