@@ -1,4 +1,5 @@
 import json
+import logging
 from fastapi import FastAPI, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 from database import SessionLocal, engine, Base
@@ -13,9 +14,12 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Sensor API")
 
+logger = logging.getLogger(__name__)
+
 DEFAULT_SENSOR_NAME = "Temperature Sensor"
 DEFAULT_SENSOR_TYPE = "temperature"
 DEFAULT_SENSOR_LOCATION = "Digester"
+DEFAULT_SENSOR_UNIT = "°C"
 
 app.add_middleware(
     CORSMiddleware,
@@ -85,6 +89,27 @@ def ensure_single_temperature_sensor(db: Session) -> models.Sensor:
         db.refresh(canonical_sensor)
 
     return canonical_sensor
+
+
+def build_realtime_sensor_payload(
+    sensor: models.Sensor,
+    reading: models.SensorReading,
+) -> dict:
+    return {
+        "id": sensor.id,
+        "name": sensor.name,
+        "type": sensor.type,
+        "location": sensor.location,
+        "status": "online" if reading.is_present else "offline",
+        "currentReading": {
+            "timestamp": str(reading.timestamp),
+            "value": reading.value,
+            "unit": reading.unit,
+        },
+        "minValue": 0,
+        "maxValue": 100,
+        "optimalRange": {"min": 35, "max": 40},
+    }
 
 # -------------------------------
 # 🔹 WebSocket Connection Manager
@@ -194,22 +219,39 @@ async def ingest_data(
     if data.get("value") is None:
         data["value"] = 0.0   # default or previous reading
     if not data.get("unit"):
-        data["unit"] = sensor.unit if hasattr(sensor, "unit") else "N/A"
+        data["unit"] = DEFAULT_SENSOR_UNIT
     if data.get("is_present") is None:
         data["is_present"] = True
+
+    logger.info(
+        "Incoming temperature reading received: value=%s unit=%s is_present=%s sensor_id=%s",
+        data["value"],
+        data["unit"],
+        data["is_present"],
+        data["sensor_id"],
+    )
 
     db_reading = models.SensorReading(**data)
     db.add(db_reading)
     db.commit()
     db.refresh(db_reading)
 
+    realtime_sensor = build_realtime_sensor_payload(sensor, db_reading)
+
     # 🔹 Broadcast to all WebSocket clients
     await manager.broadcast({
         "type": "new_reading",
         "sensor_id": db_reading.sensor_id,
+        "sensor_name": sensor.name,
+        "sensor_type": sensor.type,
+        "location": sensor.location,
         "value": db_reading.value,
+        "unit": db_reading.unit,
         "is_present": db_reading.is_present,
         "timestamp": str(db_reading.timestamp),
+        "status": realtime_sensor["status"],
+        "currentReading": realtime_sensor["currentReading"],
+        "sensor": realtime_sensor,
     })
 
     return db_reading
